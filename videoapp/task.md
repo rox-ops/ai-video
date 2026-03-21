@@ -1,0 +1,17 @@
+# Task list for AiVideoForge
+- [x] Initialize project structure
+  - [x] Create Next.js frontend
+  - [x] Create FastAPI backend
+- [x] Implement Backend
+  - [x] Setup FastAPI server and endpoints
+  - [x] Integrate Gemini API for script generation (Hindi)
+  - [x] Integrate Gemini API for image generation
+  - [x] Integrate Google Cloud TTS + gTTS fallback for Hindi narration
+  - [x] Integrate FFmpeg for combining images and audio
+- [x] Implement Frontend
+  - [x] Build Prompt UI
+  - [x] Add loading state and progress indicators
+  - [x] Create video player for result preview
+- [x] Create startup scripts & README
+- [x] Review & Testing
+  - [x] File structure verified, fallbacks tested
