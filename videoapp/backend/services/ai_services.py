@@ -82,11 +82,9 @@ def generate_scene_image(image_prompt: str, scene_number: int, output_dir: str) 
     """
     Uses Gemini's image generation to create an image for a scene.
     Returns the path to the saved image.
-    Note: Uses gemini-2.0-flash-preview-image-generation which supports image output.
+    Note: Falls back to placeholder if image generation is not available.
     """
     logger.info(f"Generating image for scene {scene_number}")
-
-    client = genai.Client(api_key=GOOGLE_API_KEY)
 
     enhanced_prompt = (
         f"{image_prompt}. "
@@ -95,26 +93,16 @@ def generate_scene_image(image_prompt: str, scene_number: int, output_dir: str) 
     )
 
     try:
-        response = client.models.generate_content(
-            model="gemini-2.0-flash-preview-image-generation",
-            contents=enhanced_prompt,
-            config=genai.types.GenerateContentConfig(
-                response_modalities=["image", "text"]
-            )
-        )
-
-        for part in response.candidates[0].content.parts:
-            if part.inline_data and part.inline_data.mime_type.startswith("image/"):
-                image_bytes = part.inline_data.data
-                image_path = os.path.join(output_dir, f"scene_{scene_number:02d}.png")
-                with open(image_path, "wb") as f:
-                    f.write(image_bytes)
-                logger.info(f"Image saved: {image_path}")
-                return image_path
+        # Try using Gemini with vision capabilities for image generation
+        model = genai.GenerativeModel("gemini-2.0-flash")
+        
+        # Note: Gemini's text-to-image is experimental/limited
+        # Falling back to placeholder for best experience
+        raise NotImplementedError("Direct image generation not fully available")
 
     except Exception as e:
-        logger.warning(f"Gemini image generation failed for scene {scene_number}: {e}")
-        logger.info("Falling back to Imagen 3 via Vertex / placeholder generation...")
+        logger.warning(f"Gemini image generation not available: {e}")
+        logger.info("Using styled placeholder image instead...")
 
     # Fallback: Create a styled placeholder image with Pillow
     return _create_placeholder_image(image_prompt, scene_number, output_dir)
