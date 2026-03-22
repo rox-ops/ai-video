@@ -28,7 +28,13 @@ app = FastAPI(title="AiVideoForge API", version="1.0.0")
 # Allow frontend to talk to backend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost",
+        "http://127.0.0.1",
+    ],
+    allow_origin_regex=r"https://.*\.app\.github\.dev",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -162,6 +168,12 @@ async def get_job_status(job_id: str):
 @app.get("/api/health")
 async def health_check():
     return {"status": "ok", "service": "AiVideoForge API"}
+
+
+# Optional: serve frontend from backend origin to avoid cross-origin issues.
+FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
+if FRONTEND_DIR.exists():
+    app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
 
 
 if __name__ == "__main__":

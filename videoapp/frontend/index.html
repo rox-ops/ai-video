@@ -779,7 +779,107 @@
   </div>
 
   <script>
-    const API_BASE = 'http://localhost:8000';
+    function resolveApiBase() {
+      const params = new URLSearchParams(window.location.search);
+      const queryApi = params.get('api');
+      const savedApi = localStorage.getItem('AIVIDEOFORGE_API_BASE');
+      const host = window.location.hostname;
+      const protocol = window.location.protocol;
+
+      if (queryApi) {
+        localStorage.setItem('AIVIDEOFORGE_API_BASE', queryApi);
+        return queryApi.replace(/\/$/, '');
+      }
+
+      if (savedApi) {
+        return savedApi.replace(/\/$/, '');
+      }
+
+      // When opened directly as file://, browser cannot infer host mapping.
+      if (protocol === 'file:') {
+        return 'http://localhost:8000';
+      }
+
+      // Local dev: frontend on localhost should call backend on localhost:8000.
+      if (host === 'localhost' || host === '127.0.0.1') {
+        return 'http://localhost:8000';
+      }
+
+      // GitHub forwarded hosts already encode the forwarded port in the hostname.
+      // Avoid appending ":8000" to these hosts.
+      if (host.endsWith('.app.github.dev')) {
+        if (host.includes('-3000.')) {
+          return `${protocol}//${host.replace('-3000.', '-8000.')}`;
+        }
+        return `${protocol}//${host}`;
+      }
+
+      // Fallback: assume backend is on same host at port 8000.
+      return `${protocol}//${host}:8000`;
+    }
+
+    const API_BASE = resolveApiBase();
+
+    function getApiCandidates() {
+      const direct = API_BASE;
+      const candidates = [direct];
+
+      // If app is served from backend origin directly, same-origin API path works.
+      candidates.push(window.location.origin);
+
+      return [...new Set(candidates.map((c) => c.replace(/\/$/, '')))].filter(Boolean);
+    }
+
+    async function apiFetch(path, options = {}) {
+      const apiCandidates = getApiCandidates();
+      let lastError = null;
+
+      for (const base of apiCandidates) {
+        try {
+          const response = await fetch(`${base}${path}`, {
+            credentials: 'include',
+            ...options,
+          });
+
+          const contentType = (response.headers.get('content-type') || '').toLowerCase();
+
+          // Some proxy/login routes can return HTML with 200. For API paths,
+          // skip those and try the next candidate.
+          if (!contentType.includes('application/json')) {
+            if (response.ok || response.status === 401 || response.status === 403) {
+              lastError = new Error(`Non-JSON response from ${base}${path}`);
+              continue;
+            }
+          }
+
+          if (response.ok) {
+            return { response, apiBase: base };
+          }
+
+          // Return non-network errors to caller for proper handling.
+          return { response, apiBase: base };
+        } catch (err) {
+          lastError = err;
+        }
+      }
+
+      throw new Error(
+        (lastError && lastError.message ? lastError.message : 'Network error while contacting backend.') +
+        ` (Tried APIs: ${getApiCandidates().join(', ')})`
+      );
+    }
+
+    async function readJsonSafe(response, fallbackMessage) {
+      const contentType = (response.headers.get('content-type') || '').toLowerCase();
+      if (!contentType.includes('application/json')) {
+        const text = await response.text();
+        const preview = (text || '').slice(0, 120).replace(/\s+/g, ' ').trim();
+        throw new Error(`${fallbackMessage} (received non-JSON: ${preview || 'empty response'})`);
+      }
+      return response.json();
+    }
+
+    console.log('AiVideoForge API candidates:', getApiCandidates());
     let pollingInterval = null;
     let currentJobId = null;
 
@@ -872,23 +972,25 @@
       setStageActive('script');
 
       try {
-        const res = await fetch(`${API_BASE}/api/generate`, {
+        const { response: res } = await apiFetch('/api/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ prompt })
         });
 
         if (!res.ok) {
-          const err = await res.json();
+          const err = await readJsonSafe(res, 'Backend returned an error');
           throw new Error(err.detail || 'Server error. Is the backend running?');
         }
 
-        const data = await res.json();
+        const data = await readJsonSafe(res, 'Invalid response from /api/generate');
         currentJobId = data.job_id;
         startPolling(currentJobId);
 
       } catch (e) {
-        showError(e.message || 'Could not connect to backend. Is the server running on port 8000?');
+        showError(
+          (e && e.message ? e.message : 'Network error while contacting backend.')
+        );
       }
     }
 
@@ -899,9 +1001,9 @@
 
     async function pollStatus(jobId) {
       try {
-        const res = await fetch(`${API_BASE}/api/status/${jobId}`);
+        const { response: res, apiBase } = await apiFetch(`/api/status/${jobId}`);
         if (!res.ok) return;
-        const job = await res.json();
+        const job = await readJsonSafe(res, 'Invalid response from /api/status');
 
         // Update progress bar
         const pct = job.progress || 0;
@@ -932,8 +1034,8 @@
           document.getElementById('progressPct').textContent = '100%';
 
           const videoEl = document.getElementById('outputVideo');
-          videoEl.src = `${API_BASE}${job.video_url}`;
-          document.getElementById('downloadBtn').href = `${API_BASE}${job.video_url}`;
+          videoEl.src = `${apiBase}${job.video_url}`;
+          document.getElementById('downloadBtn').href = `${apiBase}${job.video_url}`;
 
           document.getElementById('videoResult').classList.add('visible');
           document.getElementById('videoResult').scrollIntoView({ behavior: 'smooth', block: 'start' });

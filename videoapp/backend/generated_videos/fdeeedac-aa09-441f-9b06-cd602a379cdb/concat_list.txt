@@ -1,0 +1,7 @@
+file 'generated_videos/fdeeedac-aa09-441f-9b06-cd602a379cdb/clip_01.mp4'
+file 'generated_videos/fdeeedac-aa09-441f-9b06-cd602a379cdb/clip_02.mp4'
+file 'generated_videos/fdeeedac-aa09-441f-9b06-cd602a379cdb/clip_03.mp4'
+file 'generated_videos/fdeeedac-aa09-441f-9b06-cd602a379cdb/clip_04.mp4'
+file 'generated_videos/fdeeedac-aa09-441f-9b06-cd602a379cdb/clip_05.mp4'
+file 'generated_videos/fdeeedac-aa09-441f-9b06-cd602a379cdb/clip_06.mp4'
+file 'generated_videos/fdeeedac-aa09-441f-9b06-cd602a379cdb/clip_07.mp4'

@@ -7,25 +7,37 @@ import json
 import logging
 import subprocess
 import tempfile
+import shutil
 from pathlib import Path
 from typing import List, Dict
+
+from mutagen import File as MutagenFile
+from imageio_ffmpeg import get_ffmpeg_exe
 
 logger = logging.getLogger(__name__)
 
 
+def _resolve_ffmpeg_bin() -> str:
+    """Resolve an ffmpeg binary path from env, PATH, or bundled package."""
+    env_bin = os.getenv("FFMPEG_BINARY")
+    if env_bin and os.path.exists(env_bin):
+        return env_bin
+
+    system_bin = shutil.which("ffmpeg")
+    if system_bin:
+        return system_bin
+
+    # Bundled static ffmpeg binary from imageio-ffmpeg.
+    return get_ffmpeg_exe()
+
+
 def get_audio_duration(audio_path: str) -> float:
-    """Get the duration of an audio file using ffprobe."""
+    """Get duration for MP3/WAV audio files without requiring ffprobe."""
     try:
-        result = subprocess.run(
-            [
-                "ffprobe", "-v", "error",
-                "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1",
-                audio_path
-            ],
-            capture_output=True, text=True, check=True
-        )
-        return float(result.stdout.strip())
+        audio = MutagenFile(audio_path)
+        if audio is None or getattr(audio, "info", None) is None:
+            raise RuntimeError("Unsupported audio format for duration parsing.")
+        return float(audio.info.length)
     except Exception as e:
         logger.warning(f"Could not get audio duration for {audio_path}: {e}. Defaulting to 5s.")
         return 5.0
@@ -46,6 +58,8 @@ def create_video_from_scenes(
     Returns: path to the final MP4 file.
     """
     logger.info(f"Starting video assembly for job {job_id} with {len(scenes)} scenes.")
+    ffmpeg_bin = _resolve_ffmpeg_bin()
+    logger.info(f"Using ffmpeg binary: {ffmpeg_bin}")
     
     # Build individual scene clips  
     clip_paths = []
@@ -66,7 +80,7 @@ def create_video_from_scenes(
         total_duration = duration + 0.5
         
         command = [
-            "ffmpeg", "-y",
+            ffmpeg_bin, "-y",
             "-loop", "1",
             "-i", image_path,
             "-i", audio_path,
@@ -98,14 +112,15 @@ def create_video_from_scenes(
     concat_file = os.path.join(output_dir, "concat_list.txt")
     with open(concat_file, "w", encoding="utf-8") as f:
         for clip in clip_paths:
-            # Use forward slashes for ffmpeg compatibility
-            f.write(f"file '{clip.replace(chr(92), '/')}'\n")
+            # Use absolute POSIX paths so ffmpeg concat does not prepend list directory.
+            abs_clip = str(Path(clip).resolve()).replace("\\", "/")
+            f.write(f"file '{abs_clip}'\n")
     
     # Concatenate all clips into the final video
     final_video_path = os.path.join(output_dir, f"final_video_{job_id}.mp4")
     
     concat_command = [
-        "ffmpeg", "-y",
+        ffmpeg_bin, "-y",
         "-f", "concat",
         "-safe", "0",
         "-i", concat_file,
